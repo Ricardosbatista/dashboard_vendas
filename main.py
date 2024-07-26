@@ -70,6 +70,7 @@ def filtro_categoria (categoria_selecionada):
 #Criando App ________________________________
 
 app = dash.Dash(__name__)
+server = app.server
 
 #Montando Layout_________________________________
 
