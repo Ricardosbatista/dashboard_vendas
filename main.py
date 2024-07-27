@@ -27,6 +27,9 @@ df ['Mês'] = df['dt_Venda'].dt.strftime('%b').str.upper()
 
 lista_meses=[]
 
+df = df[df['Mês'].notna()]
+df = df[df['Mês'] !='']
+
 for mes in df['Mês'].unique():
     lista_meses.append({
             'label': mes,
@@ -65,7 +68,9 @@ def filtro_mes (mes_selecionado):
 def filtro_categoria (categoria_selecionada):
     if categoria_selecionada is None:
         return pd.Series(True, index=df.index)
-    return df['Categoria']== categoria_selecionada
+    elif categoria_selecionada=='Categoria':
+        return df['Categorias']
+    return df['Categorias']== categoria_selecionada
 
 #Criando App ________________________________
 
@@ -111,43 +116,44 @@ linha_1=html.Div([
     html.Div([
         html.H4(id='output_cliente'),
         dcc.Graph(id='visual01')
-        ],
-    style={'font-family': 'Century Gothic','text-align': 'center', 'width': '65%'}),
+        ], style={'font-family': 'Century Gothic','text-align': 'center', 'width': '65%'}
+    ),
     
-    html.Div(
+    
+    html.Div([
         dbc.RadioItems(
             id='radio_meses',
-            options=lista_meses,
-            inline=True
-        ), style={'width': '30%'}
-    ),
+            options= lista_meses,
+            inline=True),
 
-    html.Div(
         dbc.RadioItems(
             id='radio_categoria',
-            options= lista_categorias,
-            inline=True),
-            style={
+            options=lista_categorias,
+            inline=True
+
+
+        )], style={
                 'display':'flex',
                 'flex-direction': 'column',
                 'width': '30%',
-                'justify-content': 'space-around'}
-    ),
+                'justify-content': 'space-around'}),           
 
     ], style={
         'margin-top': '40px',
         'display': 'flex',
         'justify-content': 'space-around',
-        'height': '300px'}
-    )
+        'height': '300px'})
 
     
-
 linha_2=html.Div([
 
         dcc.Graph(id='visual02', style={'width': '65%'}),
-        dcc.Graph(id='visual03', style={'width': '30%'})
-    ],  style={'display': 'flex', 'justify-content': 'space-evenly', 'height': '300px'})
+        dcc.Graph(id='visual03', style={'width': '35%', 'height': '380px'})
+    ],  style={'display': 'flex', 
+               'justify-content': 'space-evenly', 
+               'height': '380px', 
+               'margin-top':'30px',
+               'vertical-align': 'center'})
 
 app.layout = html.Div([linha_cabecalho, linha_1, linha_2])
 
@@ -177,6 +183,7 @@ def visual01(cliente, mes, categoria, toggle):
     nome_cliente = filtro_cliente(cliente)
     nome_mes = filtro_mes(mes)
     nome_categoria = filtro_categoria(categoria)
+
     filtros = nome_cliente & nome_mes & nome_categoria
 
     df1 = df.loc [filtros]
@@ -209,6 +216,116 @@ def visual01(cliente, mes, categoria, toggle):
                paper_bgcolor='rgba(0,0,0,0)')
 
     return fig1
+
+@app.callback(
+    [Output('visual02', 'figure'),
+    Output('visual03', 'figure')],
+
+    [   Input('radio_categoria', 'value'),
+        Input('radio_meses', 'value'),
+        Input(ThemeSwitchAIO.ids.switch('theme'),'value')
+    ]
+)
+def visual02 (categoria, mes, toggle):
+
+    template= dark_tema if toggle else vapor_tema
+
+    nome_categoria = filtro_categoria(categoria)
+    nome_mes = filtro_mes(mes)
+
+    filtros_categoria = nome_categoria
+    filtro_mes_categoria=nome_categoria & nome_mes
+
+    df2 = df.loc[filtros_categoria]
+    df3 = df.loc[filtro_mes_categoria]
+
+    #agrupar total de vendas por loja
+
+    df_lojas_todas2 = df2.groupby(['Mês', 'Loja'])['Total'].mean().reset_index()
+
+    df_lojas_todas3 = df3.groupby(['Mês', 'Loja'])['Total'].sum().reset_index()
+
+    max_size = df_lojas_todas2['Total']. max()
+    min_size = df_lojas_todas2['Total']. min()
+
+    cores_map = {'Rio de Janeiro': 'red',
+                 'Salvador': 'green',
+                 'Santos': 'grey',
+                 'São Paulo' : 'Blue',
+                 'Três Rios': 'yellow'             
+                 }
+    
+    ordem_meses = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG','SEP', 'OCT', 'NOV', 'DEC']
+
+    fig2 = go.Figure()
+    for loja in df_lojas_todas2['Loja'].unique():
+        df_lojas = df_lojas_todas2[df_lojas_todas2['Loja']==loja]
+        cor=cores_map.get(loja,'Black')
+
+        fig2.add_trace(
+            go.Scatter(
+                x= df_lojas['Mês'],
+                y = df_lojas['Total'],
+                mode='markers',
+                marker=dict(
+                    color=cor,
+                    size=(df_lojas['Total'] - min_size)/(max_size-min_size)*50,
+                    opacity=0.5,
+                    line=dict(color=cor)
+                ),
+                name=str(loja)
+            )
+        )
+    fig2.update_layout(
+            margin=dict(t=0),
+            template=template,
+            plot_bgcolor = 'rgba(0,0,0,0)',
+            paper_bgcolor = 'rgba(0,0,0,0)',
+            xaxis=dict(
+                categoryorder='array',
+                categoryarray= ordem_meses,
+                showgrid=False
+            ),
+            yaxis=dict(showgrid=False)
+    )
+
+#Visual 03_______________________________________________________________________
+
+    fig3 = go.Figure(data=go.Scatterpolar(
+        r= df_lojas_todas3['Total'],
+        theta=df_lojas_todas3['Loja'],
+        line=dict(color='rgb(31,119,180)'),
+        marker=dict(color='rgb(31,119,180)', size=7),
+        fill='toself',
+        opacity=0.8
+    
+    ))
+
+    fig3.update_layout(
+        template=template,
+                polar=dict(
+            radialaxis=dict(
+                visible=True,
+                tickfont=dict(size=10),
+                tickangle=0,
+                tickcolor='rgba(68,68,68,0)',
+                ticklen=5,
+                tickwidth=1,
+                tickprefix='',
+                ticksuffix='',
+                range=[0, max (df_lojas_todas3['Total'])+1000]
+
+            )
+        ),
+        font=dict(
+            family='Century Gothic',
+            size=12),
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        margin=dict(l=40, r=40, t=80, b=40)
+    )
+
+    return fig2, fig3
 
 
 
